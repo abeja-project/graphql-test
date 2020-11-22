@@ -14,8 +14,8 @@ type Abeja struct {
 }
 
 // New creats a new Abeja.
-func New() *Abeja {
-	schema := graphql.MustParseSchema(graphQLSchema, new(resolver))
+func New(db Database) *Abeja {
+	schema := graphql.MustParseSchema(graphQLSchema, &resolver{db: db})
 
 	return &Abeja{
 		schema:  schema,

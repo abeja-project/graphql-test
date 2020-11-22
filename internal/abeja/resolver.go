@@ -2,40 +2,72 @@ package abeja
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strconv"
 
 	"github.com/graph-gophers/graphql-go"
 )
 
 type resolver struct {
-	todos []*Todo
+	db Database
 }
 
 func (r *resolver) Todos(ctx context.Context) ([]*todoResolver, error) {
-	var resolvers []*todoResolver
-	for _, todo := range r.todos {
-		resolvers = append(resolvers, &todoResolver{todo})
+	todos, err := r.db.Objects(ctx, "todo")
+	if err != nil {
+		return nil, fmt.Errorf("getting todos from db: %w", err)
 	}
+
+	resolvers := make([]*todoResolver, 0, len(todos))
+	for id, encoded := range todos {
+		var todo Todo
+		if err := json.Unmarshal(encoded, &todo); err != nil {
+			return nil, fmt.Errorf("decoding todo %d", id)
+		}
+
+		resolvers = append(resolvers, &todoResolver{&todo})
+	}
+
 	return resolvers, nil
 }
 
 func (r *resolver) CreateTodo(ctx context.Context, args struct{ Input newTodo }) (*todoResolver, error) {
+	id, err := r.db.NewID(ctx, "todo")
+	if err != nil {
+		return nil, fmt.Errorf("creating new todo id: %w", err)
+	}
+
+	userID, err := strconv.Atoi(string(args.Input.UserID))
+	if err != nil {
+		return nil, fmt.Errorf("invalid user id `%s`", args.Input.UserID)
+	}
+
 	todo := &Todo{
-		ID:     "1",
+		ID:     id,
 		Text:   args.Input.Text,
 		Done:   false,
-		UserID: "1",
+		UserID: userID,
 	}
-	r.todos = append(r.todos, todo)
+
+	raw, err := json.Marshal(todo)
+	if err != nil {
+		return nil, fmt.Errorf("encoding todo: %w", err)
+	}
+
+	if err := r.db.Update(ctx, "todo", id, raw); err != nil {
+		return nil, fmt.Errorf("saving todo: %w", err)
+	}
+
 	return &todoResolver{todo}, nil
 }
 
 // Todo is something, that has to be done.
 type Todo struct {
-	ID     graphql.ID
+	ID     int
 	Text   string
 	Done   bool
-	UserID graphql.ID
+	UserID int
 }
 
 type todoResolver struct {
@@ -43,7 +75,7 @@ type todoResolver struct {
 }
 
 func (r *todoResolver) ID() graphql.ID {
-	return r.t.ID
+	return graphql.ID(strconv.Itoa(r.t.ID))
 }
 
 func (r *todoResolver) Text() string {
@@ -55,15 +87,15 @@ func (r *todoResolver) Done() bool {
 }
 
 func (r *todoResolver) User() (*userResolver, error) {
-	if r.t.UserID != "1" {
-		return nil, fmt.Errorf("user with id %s does not exist", r.t.UserID)
+	if r.t.UserID != 1 {
+		return nil, fmt.Errorf("user with id %d does not exist", r.t.UserID)
 	}
-	return &userResolver{&User{ID: "1", Name: "Anja"}}, nil
+	return &userResolver{&User{ID: 1, Name: "Anja"}}, nil
 }
 
 // User is someone who can do something.
 type User struct {
-	ID   graphql.ID
+	ID   int
 	Name string
 }
 
@@ -72,7 +104,7 @@ type userResolver struct {
 }
 
 func (r *userResolver) ID() graphql.ID {
-	return r.u.ID
+	return graphql.ID(strconv.Itoa(r.u.ID))
 }
 
 func (r *userResolver) Name() string {

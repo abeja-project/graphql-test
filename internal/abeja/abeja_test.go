@@ -7,10 +7,12 @@ import (
 	"testing"
 
 	"github.com/abeja-project/graphql-test/internal/abeja"
+	"github.com/abeja-project/graphql-test/internal/database"
 )
 
 func TestHanlder(t *testing.T) {
-	srv := httptest.NewServer(abeja.New())
+	db := database.New()
+	srv := httptest.NewServer(abeja.New(db))
 	defer srv.Close()
 
 	for _, tt := range []struct {
